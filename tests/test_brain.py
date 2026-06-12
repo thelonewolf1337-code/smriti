@@ -85,9 +85,10 @@ def test_success_after_struggle_feels_like_pride():
 def test_flashbulb_high_arousal_events_rank_higher():
     eng = MemoryEngine(":memory:")
     t = time.time()
-    eng.remember_event("the production server crashed during deploy", importance=0.5, ts=t)
     eng.remember_event("the production server crashed during deploy", importance=0.5, ts=t,
-                       emotion="fear", arousal=0.9)
+                       dedupe=False)
+    eng.remember_event("the production server crashed during deploy", importance=0.5, ts=t,
+                       emotion="fear", arousal=0.9, dedupe=False)
     hits = eng.recall("server crashed", k=2)
     top = eng.store.conn.execute("SELECT arousal FROM events WHERE id = ?", (int(hits[0].ref),)).fetchone()
     assert top["arousal"] == 0.9  # the emotional copy wins

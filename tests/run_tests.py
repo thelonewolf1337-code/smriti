@@ -22,6 +22,7 @@ except ImportError:  # provide the tiny subset the suite uses
     sys.modules["pytest"] = shim
 
 import test_brain  # noqa: E402
+import test_improvements  # noqa: E402
 import test_smriti  # noqa: E402
 
 from smriti import MemoryEngine  # noqa: E402
@@ -29,7 +30,7 @@ from smriti import MemoryEngine  # noqa: E402
 
 def main() -> int:
     tests = []
-    for mod in (test_smriti, test_brain):
+    for mod in (test_smriti, test_brain, test_improvements):
         tests += [(n, f) for n, f in vars(mod).items() if n.startswith("test_") and callable(f)]
     passed, failed = 0, 0
     for name, fn in tests:
