@@ -1,5 +1,10 @@
 # Smriti 🧠
 
+[![CI](https://github.com/thelonewolf1337-code/smriti/actions/workflows/ci.yml/badge.svg)](https://github.com/thelonewolf1337-code/smriti/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+[![Zero dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg)](pyproject.toml)
+
 > *Smriti (स्मृति) — Sanskrit for "memory".*
 
 **Portable memory + self-improvement loop for AI agents** — now with a brain: simulated affect (**Bhava**: emotions, mood, personality) and cognition (**Manas**: working memory, drives, values). Framework-agnostic, ships as an MCP server, zero required dependencies (pure Python + SQLite).
@@ -79,6 +84,29 @@ Consolidator(eng, llm=llm).run()
 ### Swap embeddings
 
 Default `HashEmbedder` is deterministic and offline. For semantic depth, implement `embed(text) -> list[float]` with sentence-transformers or any API and pass it: `MemoryEngine(path, embedder=MyEmbedder())`.
+
+## Benchmarked self-improvement
+
+Most memory systems claim agents "learn". Smriti measures it (`python benchmarks/self_improvement.py`, runs in CI):
+
+| Metric | Day 1 (no memory) | Day 30 (with memory) |
+|---|---|---|
+| Steps to complete 5 ops tasks | 20 (trial & error) | **5** (skill recall) |
+| Skill recalled as top hit | — | **5/5 tasks** |
+
+Repetition also strengthens: recalled memories gain importance (testing effect), and repeated events consolidate into one stronger memory instead of duplicates.
+
+## Local-first LLM hooks (optional)
+
+```python
+from smriti import Brain, Consolidator, MemoryEngine, OllamaEmbedder, ollama_llm
+
+eng = MemoryEngine("~/.smriti/memory.db", embedder=OllamaEmbedder())  # semantic recall
+Consolidator(eng, llm=ollama_llm("llama3.2")).run()                   # smarter reflection
+b = Brain(engine=eng, guard_llm=ollama_llm("llama3.2"))               # paraphrase-proof conscience
+```
+
+Everything still works with zero dependencies if you skip these — the hooks are plain `text -> text` / `text -> vector` callables, so any provider fits.
 
 ## Design positions (opinionated)
 
