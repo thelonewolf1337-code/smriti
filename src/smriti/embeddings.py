@@ -58,6 +58,41 @@ class HashEmbedder:
         return [v / norm for v in vec]
 
 
+class OllamaEmbedder:
+    """Real semantic embeddings via a local Ollama server (no API key, private).
+
+    Usage:
+        eng = MemoryEngine(path, embedder=OllamaEmbedder())  # needs `ollama pull nomic-embed-text`
+
+    Falls back loudly (raises) if the server is unreachable — pass
+    fallback=HashEmbedder() to degrade gracefully instead.
+    """
+
+    def __init__(self, model: str = "nomic-embed-text", host: str = "http://localhost:11434",
+                 dim: int = 768, fallback: "Embedder | None" = None, timeout: float = 10.0):
+        self.model, self.host, self.dim, self.fallback, self.timeout = model, host, dim, fallback, timeout
+
+    def embed(self, text: str) -> list[float]:
+        import json as _json
+        import urllib.request
+
+        try:
+            req = urllib.request.Request(
+                f"{self.host}/api/embeddings",
+                data=_json.dumps({"model": self.model, "prompt": text}).encode(),
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                vec = _json.loads(resp.read())["embedding"]
+            norm = math.sqrt(sum(v * v for v in vec)) or 1.0
+            self.dim = len(vec)
+            return [v / norm for v in vec]
+        except Exception:
+            if self.fallback is not None:
+                return self.fallback.embed(text)
+            raise
+
+
 def cosine(a: list[float], b: list[float]) -> float:
     if not a or not b or len(a) != len(b):
         return 0.0

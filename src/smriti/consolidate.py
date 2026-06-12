@@ -49,6 +49,27 @@ _PREDICATE_ALIASES = {
 }
 
 
+def ollama_llm(model: str = "llama3.2", host: str = "http://localhost:11434",
+               timeout: float = 120.0) -> Callable[[str], str]:
+    """Batteries-included LLM hook for local consolidation via Ollama.
+
+    Usage:
+        Consolidator(engine, llm=ollama_llm()).run()
+    """
+    import urllib.request
+
+    def _call(prompt: str) -> str:
+        req = urllib.request.Request(
+            f"{host}/api/generate",
+            data=json.dumps({"model": model, "prompt": prompt, "stream": False}).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read()).get("response", "")
+
+    return _call
+
+
 class Consolidator:
     def __init__(self, engine: MemoryEngine, llm: Callable[[str], str] | None = None):
         self.engine = engine

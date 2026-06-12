@@ -20,12 +20,13 @@ from smriti.memory import MemoryEngine
 
 class Brain:
     def __init__(self, path: str = ":memory:", personality: Personality | None = None,
-                 engine: MemoryEngine | None = None):
+                 engine: MemoryEngine | None = None, guard_llm=None):
         self.engine = engine or MemoryEngine(path)
         self.bhava = Bhava(self.engine.store, personality)
         self.wm = WorkingMemory()
         self.drives = Drives(self.engine)
         self.soul = SelfModel.load(self.engine.store)
+        self.guard_llm = guard_llm  # optional text->text callable for semantic act_guard
 
     # ------------------------------------------------------------------ #
     def _novelty(self, content: str, scan: int = 50) -> float:
@@ -99,7 +100,7 @@ class Brain:
     def act_guard(self, action_text: str) -> dict:
         """Conscience + emotion check before an action. Values veto absolutely;
         high anger adds a cooldown advisory even for allowed actions."""
-        violations = self.soul.check_action(action_text)
+        violations = self.soul.check_action(action_text, llm=self.guard_llm)
         anger = self.bhava.emotion_state().get("anger", 0.0)
         advisory = ""
         if anger > 0.6:

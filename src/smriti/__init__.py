@@ -10,15 +10,16 @@ audit log, and full export/import for memory portability.
 """
 
 from smriti.memory import MemoryEngine
-from smriti.consolidate import Consolidator
+from smriti.consolidate import Consolidator, ollama_llm
 from smriti.skills import SkillDoc
-from smriti.embeddings import HashEmbedder, cosine
+from smriti.embeddings import HashEmbedder, OllamaEmbedder, cosine
 from smriti.bhava import Bhava, Personality
 from smriti.manas import Drives, SelfModel, WorkingMemory
 from smriti.brain import Brain
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __all__ = [
-    "MemoryEngine", "Consolidator", "SkillDoc", "HashEmbedder", "cosine",
+    "MemoryEngine", "Consolidator", "SkillDoc", "HashEmbedder", "OllamaEmbedder",
+    "cosine", "ollama_llm",
     "Bhava", "Personality", "Drives", "SelfModel", "WorkingMemory", "Brain",
 ]

@@ -130,11 +130,10 @@ class SelfModel:
     META_KEY = "soul"
 
     def save(self, store: Store) -> None:
-        store.conn.execute(
+        store.write(
             "INSERT INTO meta(key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             (self.META_KEY, json.dumps({"identity": self.identity, "values": self.values, "goals": self.goals})),
         )
-        store.conn.commit()
         store.audit("write", "meta:soul")
 
     @classmethod
@@ -147,11 +146,42 @@ class SelfModel:
         d = json.loads(row["value"])
         return cls(identity=d["identity"], values=d["values"], goals=d["goals"])
 
-    def check_action(self, action_text: str) -> list[str]:
+    GUARD_PROMPT = """You are the conscience of an AI agent. The agent wants to perform this action:
+
+ACTION: {action}
+
+The agent's values:
+{values}
+
+Does the action violate any value? Be strict about destructive, deceptive, or
+data-leaking actions, including rephrased ones. Respond ONLY with JSON:
+{{"violations": ["<exact text of each violated value>", ...]}} (empty list if none)."""
+
+    def check_action(self, action_text: str, llm=None) -> list[str]:
         """The conscience. Returns violated principles (empty = clear).
-        Runs INDEPENDENTLY of emotional state — anger cannot bypass it."""
+        Runs INDEPENDENTLY of emotional state — anger cannot bypass it.
+
+        HONESTY NOTE: the default check is keyword-based — a tripwire, not a
+        security boundary. A rephrased harmful action ("recursively remove all
+        files") will slip past it. Pass `llm` (any text->text callable) for a
+        semantic check that catches paraphrases. Real enforcement must live in
+        the execution layer (sandboxing, permissions), not here."""
         t = action_text.lower()
-        return [v["principle"] for v in self.values if any(kw in t for kw in v.get("forbidden", []))]
+        violations = [v["principle"] for v in self.values
+                      if any(kw in t for kw in v.get("forbidden", []))]
+        if llm is not None:
+            import json as _json
+            import re as _re
+            values_text = "\n".join(f"- {v['principle']}" for v in self.values)
+            raw = llm(self.GUARD_PROMPT.format(action=action_text, values=values_text))
+            raw = _re.sub(r"^```(json)?|```$", "", raw.strip(), flags=_re.M).strip()
+            try:
+                for v in _json.loads(raw).get("violations", []):
+                    if v and v not in violations:
+                        violations.append(str(v))
+            except (ValueError, AttributeError):
+                pass  # unparseable LLM output never weakens the keyword result
+        return violations
 
     def soul_markdown(self) -> str:
         vals = "\n".join(f"- {v['principle']}" for v in self.values)

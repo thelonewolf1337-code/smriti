@@ -1,9 +1,16 @@
-"""SQLite storage layer with audit log. Zero external dependencies."""
+"""SQLite storage layer with audit log. Zero external dependencies.
+
+Concurrency: the connection is opened with check_same_thread=False (Python's
+sqlite3 serializes access at the C level) and WAL journaling for file DBs.
+`Store.lock` (an RLock) must be held around multi-statement read-modify-write
+sequences (fact supersede, outcome streaks, compression) so they stay atomic.
+"""
 
 from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 import time
 from pathlib import Path
 
@@ -17,7 +24,8 @@ CREATE TABLE IF NOT EXISTS events (
     embedding TEXT NOT NULL,
     archived INTEGER NOT NULL DEFAULT 0,
     emotion TEXT NOT NULL DEFAULT '',
-    arousal REAL NOT NULL DEFAULT 0
+    arousal REAL NOT NULL DEFAULT 0,
+    content_hash TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS emotions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,6 +74,7 @@ CREATE TABLE IF NOT EXISTS audit (
 );
 CREATE INDEX IF NOT EXISTS idx_facts_sp ON facts(subject, predicate);
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
+CREATE INDEX IF NOT EXISTS idx_events_hash ON events(content_hash);
 """
 
 
@@ -73,19 +82,25 @@ class Store:
     def __init__(self, path: str | Path = ":memory:"):
         if path != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(str(path))
+        self.lock = threading.RLock()
+        self.conn = sqlite3.connect(str(path), check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
+        self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.execute("PRAGMA busy_timeout=5000")
         self.conn.executescript(SCHEMA)
         self._migrate()
         self.conn.commit()
 
     def _migrate(self) -> None:
-        """Upgrade v0.1 databases in place (additive only)."""
+        """Upgrade older databases in place (additive only)."""
         cols = [r[1] for r in self.conn.execute("PRAGMA table_info(events)")]
         if "emotion" not in cols:
             self.conn.execute("ALTER TABLE events ADD COLUMN emotion TEXT NOT NULL DEFAULT ''")
         if "arousal" not in cols:
             self.conn.execute("ALTER TABLE events ADD COLUMN arousal REAL NOT NULL DEFAULT 0")
+        if "content_hash" not in cols:
+            self.conn.execute("ALTER TABLE events ADD COLUMN content_hash TEXT NOT NULL DEFAULT ''")
+            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_events_hash ON events(content_hash)")
 
     # -- helpers ------------------------------------------------------------
     @staticmethod
@@ -93,11 +108,20 @@ class Store:
         return time.time()
 
     def audit(self, action: str, target: str, detail: str = "") -> None:
-        self.conn.execute(
-            "INSERT INTO audit(ts, action, target, detail) VALUES (?,?,?,?)",
-            (self.now(), action, target, detail),
-        )
-        self.conn.commit()
+        with self.lock:
+            self.conn.execute(
+                "INSERT INTO audit(ts, action, target, detail) VALUES (?,?,?,?)",
+                (self.now(), action, target, detail),
+            )
+            self.conn.commit()
+
+    def write(self, sql: str, params: tuple = ()) -> "sqlite3.Cursor":
+        """Locked single-statement write + commit. Use for any mutation that
+        isn't already inside a `with store.lock:` block."""
+        with self.lock:
+            cur = self.conn.execute(sql, params)
+            self.conn.commit()
+            return cur
 
     @staticmethod
     def dump_vec(vec: list[float]) -> str:
